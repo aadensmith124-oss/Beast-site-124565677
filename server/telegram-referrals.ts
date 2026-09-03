@@ -1,11 +1,5 @@
 import { pool } from "./db.js";
 
-export const TELEGRAM_GROUP_ID =
-  process.env.TELEGRAM_GROUP_ID || process.env.Telegram_group_id || "";
-
-export const TELEGRAM_JOIN_URL =
-  process.env.TELEGRAM_JOIN_URL || "https://t.me/+4mXj61Q-goYwNWU9";
-
 /**
  * Idempotent Telegram referral/drop tables for the web app and standalone bot.
  */

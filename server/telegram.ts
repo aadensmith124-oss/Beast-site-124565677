@@ -4,14 +4,10 @@ import { log } from "./logger.js";
 import { CLAIM_LIMIT_PER_WINDOW, getClaimAccess, remainingClaimSlots } from "./reward-claim-policy.js";
 import { MAX_LICENSE_FILE_BYTES, parseLicenseKeyFile } from "./license-key-file.js";
 import {
-  TELEGRAM_GROUP_ID,
-  TELEGRAM_JOIN_URL,
   ensureTelegramReferralSchema,
 } from "./telegram-referrals.js";
 
 const BOT_TOKEN    = process.env.TELEGRAM_BOT_TOKEN;
-const GROUP_ID     = TELEGRAM_GROUP_ID;
-const GROUP_INVITE = TELEGRAM_JOIN_URL;
 const TELEGRAM_ADMIN_IDS = new Set(
   (process.env.TELEGRAM_ADMIN_IDS ?? "")
     .split(",")
@@ -286,31 +282,8 @@ async function ensureSchema() {
 function botKeyboard() {
   return new InlineKeyboard()
     .text("🎁 Claim a drop", "claim_reward")
-    .text("👤 Drop status", "account_status")
     .row()
-    .url("📣 Join our group", GROUP_INVITE)
-    .row()
-    .text("✅ Check membership", "check_join");
-}
-
-function joinGateKeyboard() {
-  return new InlineKeyboard()
-    .url("📣 Join GorillaCC", GROUP_INVITE)
-    .row()
-    .text("✅ I joined — check", "check_join");
-}
-
-async function isGroupMember(ctx: Context) {
-  if (!GROUP_ID || !ctx.from?.id) return true;
-  const member = await ctx.api.getChatMember(GROUP_ID, ctx.from.id);
-  return ["creator", "administrator", "member", "restricted"].includes(member.status);
-}
-
-async function sendJoinGate(ctx: Context) {
-  await ctx.reply(
-    "🔒 Join the GorillaCC group first, then tap the check button to unlock the bot.",
-    { reply_markup: joinGateKeyboard() },
-  );
+    .text("👤 Drop status", "account_status");
 }
 
 async function storeLicenseKeys(keys: string[], adminId: number | null, adminChatId: string) {
@@ -634,29 +607,7 @@ function createTelegramBot() {
     return next();
   });
 
-  /* ── Group-membership gate ─────────────────────────────────────────────── */
-  bot.use(async (ctx, next) => {
-    if (!GROUP_ID) return next();
-
-    const userId = ctx.from?.id;
-    if (!userId) return next();
-    if (ctx.callbackQuery?.data === "check_join") return next();
-
-    try {
-      if (!(await isGroupMember(ctx))) {
-        await sendJoinGate(ctx);
-        return;
-      }
-    } catch (err: any) {
-      console.error("[telegram] membership check failed:", err?.message ?? err);
-      await sendJoinGate(ctx);
-      return;
-    }
-
-    return next();
-  });
-
-  /* ── Name-change detection middleware (runs after gate, before commands) ── */
+  /* ── Name-change detection middleware (runs before commands) ── */
   bot.use(async (ctx, next) => {
     // Run name check silently (don't block the command)
     handleNameCheck(ctx).catch(err =>
@@ -703,25 +654,6 @@ function createTelegramBot() {
   bot.callbackQuery("account_status", async (ctx) => {
     await ctx.answerCallbackQuery();
     await sendStatus(ctx);
-  });
-
-  bot.callbackQuery("check_join", async (ctx) => {
-    await ctx.answerCallbackQuery();
-    if (GROUP_ID) {
-      try {
-        if (!(await isGroupMember(ctx))) {
-          await sendJoinGate(ctx);
-          return;
-        }
-      } catch {
-        await sendJoinGate(ctx);
-        return;
-      }
-    }
-    await ctx.reply("✅ Membership confirmed. Send /start to open the bot menu.", {
-      ...MD,
-      reply_markup: botKeyboard(),
-    });
   });
 
   /* ── Admin drop file upload ─────────────────────────────────────────────── */

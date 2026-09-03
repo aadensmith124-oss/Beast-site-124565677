@@ -33,7 +33,7 @@ Telegram_group_id=-1001234567890
 TELEGRAM_ADMIN_IDS=8929265717
 ```
 
-`DATABASE_URL` must point to a PostgreSQL database accessible from the server. `Telegram_group_id` is the numeric Telegram group or channel ID used by the membership gate. Add the bot to that group before starting it.
+`DATABASE_URL` must point to a PostgreSQL database accessible from the server. The bot does not require users to join a Telegram group before using it.
 
 ## Start
 

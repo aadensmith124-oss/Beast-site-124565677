@@ -30,11 +30,9 @@ application, then redeploy:
 | `NOWPAYMENTS_API_KEY` | For crypto payments | NOWPayments API access |
 | `NOWPAYMENTS_IPN_SECRET` | For crypto payments | NOWPayments webhook verification |
 | `TELEGRAM_BOT_TOKEN` | For Telegram | Bot token from BotFather |
-| `TELEGRAM_GROUP_ID` | For Telegram join gate | Numeric group/channel ID, including the `-100` prefix |
-| `TELEGRAM_JOIN_URL` | For Telegram join gate | Invite URL shown by the join button |
 
 Optional integrations use `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`TELEGRAM_ADMIN_IDS`, and the legacy-compatible `Telegram_group_id` name.
+and `TELEGRAM_ADMIN_IDS`.
 
 Keep the same `DATABASE_URL`, `SESSION_SECRET`, and `APP_ENCRYPTION_KEY`
 across production deploys. Changing them can invalidate sessions or make
@@ -75,7 +73,7 @@ The callback must use the same `NOWPAYMENTS_IPN_SECRET` configured in Vercel.
 Use `/api/health` after publishing to verify that Vercel is routing requests to
 the API function before debugging database configuration.
 
-## Telegram polling and join gate
+## Telegram polling and referrals
 
 The regular Replit development and published server processes run the Telegram
 bot with long polling. Vercel functions are short-lived, so the Vercel adapter
@@ -86,10 +84,6 @@ from one separate persistent process:
 npm run build:bot
 npm run start:bot
 ```
-
-The bot must be an administrator of the configured group/channel so Telegram
-can answer membership checks. Users must join that group before `/start`,
-`/ref`, or other bot commands are processed.
 
 Each successful referral gives the referrer one additional drop claim. The
 bonus is consumed automatically when the referrer uses the extra `/claim` and
