@@ -152,7 +152,7 @@ async function broadcastMessage(ctx: Context, bot: Bot) {
     `SELECT chat_id AS telegram_chat_id
      FROM telegram_chat_members
      WHERE chat_id <> $1
-     ORDER BY id
+      ORDER BY created_at, chat_id
      LIMIT $2`,
     [chatId, BROADCAST_MAX_RECIPIENTS],
   );
