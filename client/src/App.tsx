@@ -22,8 +22,6 @@ import MyCodePage from "@/pages/MyCodePage";
 import CartPage from "@/pages/CartPage";
 import RanksPage from "@/pages/RanksPage";
 import WorkerDashboardPage from "@/pages/WorkerDashboardPage";
-import CardsPage from "@/pages/CardsPage";
-import CheckerPage from "@/pages/CheckerPage";
 import BecomeResellerPage from "@/pages/BecomeSellerPage";
 import ProfilePage from "@/pages/ProfilePage";
 import SupportPage from "@/pages/SupportPage";
@@ -84,7 +82,7 @@ function Router() {
       <Switch>
         <Route path="/auth" component={AuthPage} />
         <Route path="/tos" component={TermsOfServicePage} />
-        <Route path="/" component={CardsPage} />
+        <Route path="/" component={LogsPage} />
         <Route path="/deposit" component={DepositPage} />
         <Route path="/shop" component={LogsPage} />
         <Route path="/redeem" component={RedeemCodePage} />
@@ -95,8 +93,6 @@ function Router() {
         <Route path="/cart" component={CartPage} />
         <Route path="/ranks" component={RanksPage} />
         <Route path="/worker" component={WorkerDashboardPage} />
-        <Route path="/cards" component={CardsPage} />
-        <Route path="/checker" component={CheckerPage} />
         <Route path="/become-reseller" component={BecomeResellerPage} />
         <Route path="/profile" component={ProfilePage} />
         <Route path="/support" component={SupportPage} />

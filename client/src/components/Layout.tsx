@@ -4,7 +4,6 @@ import {
   BookOpen,
   CreditCard,
   Gift,
-  Layers,
   LogOut,
   MessageSquare,
   Package,
@@ -38,7 +37,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const balanceDollars = user ? (user.balance / 100).toFixed(2) : "0.00";
 
-  const { data: features } = useQuery<{ checker: boolean; reseller: boolean; ranks: boolean; logs: boolean; cards: boolean }>({
+  const { data: features } = useQuery<{ reseller: boolean; ranks: boolean; logs: boolean }>({
     queryKey: ["/api/settings/features"],
     staleTime: 30000,
   });
@@ -82,8 +81,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       label: "Featured",
       links: [
         ...(features?.logs !== false ? [{ href: "/shop", label: "Logs", icon: FileText }] : []),
-        { href: "/", label: "Cards", icon: CreditCard },
-        ...(features?.checker !== false ? [{ href: "/checker", label: "Checker", icon: Layers }] : []),
         ...(features?.reseller !== false ? [{ href: "/become-reseller", label: "Become Seller", icon: BookOpen }] : []),
       ],
     },

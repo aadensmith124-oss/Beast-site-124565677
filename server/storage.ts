@@ -1,12 +1,23 @@
 import { db } from "./db.js";
 import { 
-  users, products, variants, stockItems, orders, orderItems, transactions, redeemCodes, announcements, uploadedImages, cards, cardBases, supportTickets, verifications, cryptoPayments, mails, mailReads, siteSettings, discountCodes, sellerApplications, achs, cryptoAddresses,
+  users, products, variants, stockItems, orders, orderItems, transactions, redeemCodes, announcements, uploadedImages, supportTickets, verifications, cryptoPayments, mails, mailReads, siteSettings, discountCodes, sellerApplications, cryptoAddresses,
   type User, type InsertUser, type Product, type InsertProduct, type Variant, type InsertVariant,
   type StockItem, type Order, type OrderItem, type Transaction, type RedeemCode, type Announcement, type InsertAnnouncement, type UploadedImage,
-  type Card, type InsertCard, type CardBase, type SellerApplication, type Ach, type InsertAch, type CryptoAddress
+  type SellerApplication, type CryptoAddress
 } from "../shared/schema.js";
 import { eq, and, sql, desc, lt } from "drizzle-orm";
 import { pool } from "./db.js";
+
+function withRedactedLegacyDelivery<T extends Pick<Order, "orderId" | "deliveryContent">>(
+  order: T,
+  items: Pick<OrderItem, "itemType">[],
+): T {
+  const legacySensitiveOrder =
+    order.orderId.startsWith("CARD-") ||
+    order.orderId.startsWith("ACH-") ||
+    items.some((item) => item.itemType === "card" || item.itemType === "ach");
+  return legacySensitiveOrder ? { ...order, deliveryContent: "" } : order;
+}
 
 export interface IStorage {
   // Users
@@ -42,7 +53,7 @@ export interface IStorage {
   releaseHeldStock(orderId: number): Promise<void>;
   
   // Orders
-  createOrder(userId: number, items: { variantId: number; quantity: number }[], cardIds?: number[]): Promise<Order>;
+  createOrder(userId: number, items: { variantId: number; quantity: number }[], discountCodeId?: number | null): Promise<Order>;
   getOrders(userId: number): Promise<(Order & { items: (OrderItem & { stockItem: StockItem | null, variant: Variant | null })[] })[]>;
   getOrder(id: number): Promise<(Order & { items: (OrderItem & { stockItem: StockItem | null, variant: Variant | null })[] }) | undefined>;
   getAllOrders(): Promise<any[]>;
@@ -83,34 +94,10 @@ export interface IStorage {
   getSupportTicket(id: number): Promise<any>;
   updateSupportTicket(id: number, data: any): Promise<any>;
 
-  // Cards
-  getCards(): Promise<Card[]>;
-  getCard(id: number): Promise<Card | undefined>;
-  createCard(card: InsertCard): Promise<Card>;
-  updateCard(id: number, data: Partial<Card>): Promise<Card>;
-  purchaseCard(cardId: number, userId: number): Promise<Card>;
-
-  // ACH
-  getAchs(): Promise<Ach[]>;
-  getAch(id: number): Promise<Ach | undefined>;
-  createAch(ach: InsertAch & { sellerId?: number }): Promise<Ach>;
-  purchaseAch(achId: number): Promise<Ach>;
-  deleteAch(id: number): Promise<void>;
-  getSellerAchs(sellerId: number): Promise<Ach[]>;
-
   // Settings
   getSetting(key: string, defaultValue?: string): Promise<string>;
   setSetting(key: string, value: string): Promise<void>;
   getPaymentMethodsConfig(): Promise<Record<string, boolean>>;
-  getUserCards(userId: number): Promise<Card[]>;
-  deleteCard(id: number): Promise<void>;
-
-  // Card Bases
-  getCardBasesWithCount(): Promise<(CardBase & { count: number })[]>;
-  createCardBase(data: Pick<CardBase, "name"> & Partial<Pick<CardBase, "isRefundable" | "validRate">>): Promise<CardBase>;
-  updateCardBase(id: number, data: Partial<Pick<CardBase, "name" | "isRefundable" | "validRate">>): Promise<CardBase | undefined>;
-  deleteCardBase(id: number): Promise<void>;
-  getCardsByBase(baseId: number): Promise<Card[]>;
 
   // Seller Applications
   createSellerApplication(userId: number, sellerCode: string): Promise<SellerApplication>;
@@ -404,7 +391,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(stockItems.orderId, orderId), eq(stockItems.isReserved, true), eq(stockItems.isSold, false)));
   }
 
-  async createOrder(userId: number, items: { variantId: number; quantity: number; sellerId?: number }[], cardIds: number[] = [], discountCodeId?: number | null): Promise<Order> {
+  async createOrder(userId: number, items: { variantId: number; quantity: number; sellerId?: number }[], discountCodeId?: number | null): Promise<Order> {
     // ── Step 1: Calculate totals and validate BEFORE touching any stock ──
     let rawTotal = 0;
     const variantMap: Record<number, typeof variants.$inferSelect> = {};
@@ -414,17 +401,6 @@ export class DatabaseStorage implements IStorage {
       if (!variant) throw new Error("Variant not found");
       variantMap[item.variantId] = variant;
       rawTotal += variant.price * item.quantity;
-    }
-
-    const cardMap: Record<number, typeof cards.$inferSelect> = {};
-    const cardPurchases: { cardId: number; price: number }[] = [];
-    for (const cardId of cardIds) {
-      const [card] = await db.select().from(cards).where(eq(cards.id, cardId));
-      if (!card) throw new Error("Card not found");
-      if (card.isSold) throw new Error("Card already sold");
-      cardMap[cardId] = card;
-      rawTotal += card.price;
-      cardPurchases.push({ cardId, price: card.price });
     }
 
     // Apply discount code
@@ -522,7 +498,6 @@ export class DatabaseStorage implements IStorage {
         orderId: order.id,
         variantId: res.variantId,
         stockItemId: res.stockItemId,
-        cardId: null,
         itemType: "product",
         price: res.price,
         quantity: 1
@@ -530,25 +505,10 @@ export class DatabaseStorage implements IStorage {
       await db.update(stockItems).set({ orderId: order.id }).where(eq(stockItems.id, res.stockItemId));
     }
 
-    for (const cp of cardPurchases) {
-      await db.insert(orderItems).values({
-        orderId: order.id,
-        variantId: null,
-        cardId: cp.cardId,
-        itemType: "card",
-        price: cp.price,
-        quantity: 1
-      });
-      const originalCard = cardMap[cp.cardId];
-      const originalSellerId = originalCard?.userId;
-      await db.update(cards).set({ isSold: true, userId }).where(eq(cards.id, cp.cardId));
-
-    }
-
     return order;
   }
 
-  async createPendingOrder(userId: number, items: { variantId: number; quantity: number }[], cardIds: number[] = [], discountCodeId?: number | null): Promise<Order> {
+  async createPendingOrder(userId: number, items: { variantId: number; quantity: number }[], discountCodeId?: number | null): Promise<Order> {
     let total = 0;
     const heldItems: { variantId: number; stockItemId: number; price: number; quantity: number }[] = [];
 
@@ -629,7 +589,6 @@ export class DatabaseStorage implements IStorage {
         orderId: order.id,
         variantId: h.variantId,
         stockItemId: h.stockItemId,
-        cardId: null,
         itemType: "product",
         price: h.price,
         quantity: 1,
@@ -865,10 +824,9 @@ export class DatabaseStorage implements IStorage {
         const [stockItem] = i.stockItemId ? await db.select().from(stockItems).where(eq(stockItems.id, i.stockItemId)) : [undefined];
         const [variant] = i.variantId ? await db.select().from(variants).where(eq(variants.id, i.variantId)) : [undefined];
         const [product] = variant?.productId ? await db.select().from(products).where(eq(products.id, variant.productId)) : [undefined];
-        const [card] = i.cardId ? await db.select().from(cards).where(eq(cards.id, i.cardId)) : [undefined];
-        itemsWithDetails.push({ ...i, stockItem: stockItem || null, variant: variant || null, card: card || null, productName: product?.name || null });
+        itemsWithDetails.push({ ...i, stockItem: stockItem || null, variant: variant || null, productName: product?.name || null });
       }
-      result.push({ ...o, items: itemsWithDetails });
+      result.push({ ...withRedactedLegacyDelivery(o, oItems), items: itemsWithDetails });
     }
     return result;
   }
@@ -882,11 +840,10 @@ export class DatabaseStorage implements IStorage {
     for (const i of oItems) {
       const [stockItem] = i.stockItemId ? await db.select().from(stockItems).where(eq(stockItems.id, i.stockItemId)) : [undefined];
       const [variant] = i.variantId ? await db.select().from(variants).where(eq(variants.id, i.variantId)) : [undefined];
-      const [card] = i.cardId ? await db.select().from(cards).where(eq(cards.id, i.cardId)) : [undefined];
-      itemsWithDetails.push({ ...i, stockItem: stockItem || null, variant: variant || null, card: card || null });
+      itemsWithDetails.push({ ...i, stockItem: stockItem || null, variant: variant || null });
     }
     
-    return { ...order, items: itemsWithDetails };
+    return { ...withRedactedLegacyDelivery(order, oItems), items: itemsWithDetails };
   }
 
   async getAllOrders(): Promise<any[]> {
@@ -900,8 +857,7 @@ export class DatabaseStorage implements IStorage {
         const [stockItem] = i.stockItemId ? await db.select().from(stockItems).where(eq(stockItems.id, i.stockItemId)) : [undefined];
         const [variant] = i.variantId ? await db.select().from(variants).where(eq(variants.id, i.variantId)) : [undefined];
         const [product] = variant?.productId ? await db.select().from(products).where(eq(products.id, variant.productId)) : [undefined];
-        const [card] = i.cardId ? await db.select().from(cards).where(eq(cards.id, i.cardId)) : [undefined];
-        itemsWithDetails.push({ ...i, stockItem: stockItem || null, variant: variant || null, card: card || null, productName: product?.name || null });
+        itemsWithDetails.push({ ...i, stockItem: stockItem || null, variant: variant || null, productName: product?.name || null });
       }
       let paymentMethod = "Unknown";
       try {
@@ -926,7 +882,7 @@ export class DatabaseStorage implements IStorage {
         }
       } catch (e) {}
       const [verif] = await db.select().from(verifications).where(eq(verifications.userId, o.userId)).catch(() => [undefined]);
-      result.push({ ...o, user: { id: user?.id, username: user?.username, email: user?.email, telegramUsername: verif?.telegramUsername || null, channelName: verif?.channelName || null, channelLink: verif?.channelLink || null }, items: itemsWithDetails, paymentMethod });
+      result.push({ ...withRedactedLegacyDelivery(o, oItems), user: { id: user?.id, username: user?.username, email: user?.email, telegramUsername: verif?.telegramUsername || null, channelName: verif?.channelName || null, channelLink: verif?.channelLink || null }, items: itemsWithDetails, paymentMethod });
     }
     return result;
   }
@@ -940,10 +896,6 @@ export class DatabaseStorage implements IStorage {
       if (item.itemType === 'product' && item.stockItemId) {
         await db.update(orderItems).set({ stockItemId: null }).where(eq(orderItems.id, item.id));
         await db.delete(stockItems).where(eq(stockItems.id, item.stockItemId));
-      }
-      if (item.itemType === 'card' && item.cardId) {
-        await db.update(orderItems).set({ cardId: null }).where(eq(orderItems.id, item.id));
-        await db.delete(cards).where(eq(cards.id, item.cardId));
       }
     }
 
@@ -1114,110 +1066,6 @@ export class DatabaseStorage implements IStorage {
     return result.rows[0];
   }
 
-  async getCards(): Promise<Card[]> {
-    return db.select().from(cards).where(eq(cards.isSold, false)).orderBy(desc(cards.createdAt));
-  }
-
-  async getCard(id: number): Promise<Card | undefined> {
-    const [card] = await db.select().from(cards).where(eq(cards.id, id));
-    return card;
-  }
-
-  async createCard(insertCard: InsertCard): Promise<Card> {
-    const [card] = await db.insert(cards).values(insertCard as typeof cards.$inferInsert).returning();
-    return card;
-  }
-
-  async updateCard(id: number, data: Partial<Card>): Promise<Card> {
-    const [card] = await db.update(cards).set(data).where(eq(cards.id, id)).returning();
-    return card;
-  }
-
-  async purchaseCard(cardId: number, userId: number, finalPrice?: number): Promise<Card> {
-    const [card] = await db.select().from(cards).where(and(eq(cards.id, cardId), eq(cards.isSold, false)));
-    if (!card) throw new Error("Card not found or already sold");
-    
-    const [updated] = await db.update(cards).set({ isSold: true, userId }).where(eq(cards.id, cardId)).returning();
-
-    const paidTotal = finalPrice ?? card.price;
-
-    // Compose full card content
-    const deliveryContent = [card.cardNumber, card.expiry, card.cvv, card.country, card.extras]
-      .filter(Boolean).join("|");
-
-    // Create a matching order so it shows in "Orders"
-    const publicOrderId = Math.random().toString(36).substring(2, 15);
-    const [order] = await db.insert(orders).values({
-      userId,
-      orderId: `CARD-${publicOrderId}`,
-      total: paidTotal,
-      paidAmount: paidTotal,
-      status: "fulfilled",
-      deliveryContent,
-      paymentMethod: "wallet",
-    }).returning();
-
-    // Insert order item so the products tab is populated
-    await db.insert(orderItems).values({
-      orderId: order.id,
-      variantId: null,
-      cardId: card.id,
-      itemType: "card",
-      price: card.price,
-      quantity: 1,
-    });
-
-    return updated;
-  }
-
-  async getUserCards(userId: number): Promise<Card[]> {
-    return db.select().from(cards).where(eq(cards.userId, userId)).orderBy(desc(cards.createdAt));
-  }
-
-  async deleteCard(id: number): Promise<void> {
-    await db.delete(cards).where(eq(cards.id, id));
-  }
-
-  async getCardBasesWithCount(): Promise<(CardBase & { count: number })[]> {
-    const result = await db.execute(sql`
-      SELECT cb.id, cb.name, cb.is_refundable, cb.valid_rate, cb.created_at,
-             COUNT(c.id) FILTER (WHERE c.is_sold = false) as count
-      FROM card_bases cb
-      LEFT JOIN cards c ON c.base_id = cb.id
-      GROUP BY cb.id, cb.name, cb.is_refundable, cb.valid_rate, cb.created_at
-      ORDER BY cb.name
-    `);
-    return (result.rows as any[]).map((r: any) => ({
-      id: r.id,
-      name: r.name,
-      isRefundable: r.is_refundable ?? null,
-      validRate: r.valid_rate == null ? null : Number(r.valid_rate),
-      createdAt: r.created_at,
-      count: Number(r.count),
-    }));
-  }
-
-  async createCardBase(data: Pick<CardBase, "name"> & Partial<Pick<CardBase, "isRefundable" | "validRate">>): Promise<CardBase> {
-    const [base] = await db.insert(cardBases).values(data).returning();
-    return base;
-  }
-
-  async updateCardBase(id: number, data: Partial<Pick<CardBase, "name" | "isRefundable" | "validRate">>): Promise<CardBase | undefined> {
-    const [base] = await db.update(cardBases).set(data).where(eq(cardBases.id, id)).returning();
-    return base;
-  }
-
-  async deleteCardBase(id: number): Promise<void> {
-    const result = await db.execute(sql`SELECT COUNT(*) as n FROM cards WHERE base_id = ${id} AND is_sold = false`);
-    const count = Number((result.rows[0] as any).n);
-    if (count > 0) throw new Error("Cannot delete base with cards in stock");
-    await db.delete(cardBases).where(eq(cardBases.id, id));
-  }
-
-  async getCardsByBase(baseId: number): Promise<Card[]> {
-    return db.select().from(cards).where(and(eq(cards.baseId, baseId), eq(cards.isSold, false))).orderBy(desc(cards.createdAt));
-  }
-
   async createSellerApplication(userId: number, sellerCode: string): Promise<SellerApplication> {
     const [app] = await db.insert(sellerApplications).values({ userId, sellerCode, status: "pending" }).returning();
     return app;
@@ -1246,33 +1094,6 @@ export class DatabaseStorage implements IStorage {
 
   async rejectSellerApplication(id: number): Promise<void> {
     await db.update(sellerApplications).set({ status: "rejected" }).where(eq(sellerApplications.id, id));
-  }
-
-  async getAchs(): Promise<Ach[]> {
-    return db.select().from(achs).where(eq(achs.isSold, false)).orderBy(desc(achs.createdAt));
-  }
-
-  async getAch(id: number): Promise<Ach | undefined> {
-    const [ach] = await db.select().from(achs).where(eq(achs.id, id));
-    return ach;
-  }
-
-  async createAch(data: InsertAch & { sellerId?: number }): Promise<Ach> {
-    const [ach] = await db.insert(achs).values({ ...data, sellerId: data.sellerId ?? null } as any).returning();
-    return ach;
-  }
-
-  async purchaseAch(achId: number): Promise<Ach> {
-    const [updated] = await db.update(achs).set({ isSold: true }).where(eq(achs.id, achId)).returning();
-    return updated;
-  }
-
-  async deleteAch(id: number): Promise<void> {
-    await db.delete(achs).where(eq(achs.id, id));
-  }
-
-  async getSellerAchs(sellerId: number): Promise<Ach[]> {
-    return db.select().from(achs).where(eq(achs.sellerId, sellerId)).orderBy(desc(achs.createdAt));
   }
 
   async getSetting(key: string, defaultValue: string = ""): Promise<string> {

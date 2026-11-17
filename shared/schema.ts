@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -114,7 +114,6 @@ export const orderItems = pgTable("order_items", {
   orderId: integer("order_id").notNull().references(() => orders.id),
   variantId: integer("variant_id"),
   stockItemId: integer("stock_item_id").references(() => stockItems.id),
-  cardId: integer("card_id").references(() => cards.id),
   itemType: text("item_type").default("product").notNull(),
   price: integer("price").notNull(),
   quantity: integer("quantity").default(1).notNull(),
@@ -173,43 +172,6 @@ export const announcements = pgTable("announcements", {
 
 export const insertAnnouncementSchema = createInsertSchema(announcements).omit({ id: true, createdAt: true });
 
-// === CARDS ===
-// === CARD BASES ===
-export const cardBases = pgTable("card_bases", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  isRefundable: boolean("is_refundable"),
-  validRate: real("valid_rate"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-export type CardBase = typeof cardBases.$inferSelect;
-
-export const cards = pgTable("cards", {
-  id: serial("id").primaryKey(),
-  cardNumber: text("card_number").notNull(),
-  maskedCard: text("masked_card").notNull(),
-  expiry: text("expiry").notNull(),
-  cvv: text("cvv").notNull(),
-  country: text("country").notNull(),
-  extras: text("extras").default(""),
-  price: integer("price").notNull(),
-  hrPercent: integer("hr_percent").default(80).notNull(),
-  isFirstHand: boolean("is_first_hand").default(false).notNull(),
-  isRefundable: boolean("is_refundable"),
-  isSold: boolean("is_sold").default(false).notNull(),
-  userId: integer("user_id").references(() => users.id),
-  binData: jsonb("bin_data").$type<{ bin: string; bank: string | null; scheme: string | null; type: string | null; brand: string | null; country: string | null; countryCode: string | null } | null>().default(null),
-  baseId: integer("base_id").references(() => cardBases.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const insertCardSchema = createInsertSchema(cards).omit({ 
-  id: true, 
-  isSold: true, 
-  userId: true, 
-  createdAt: true 
-});
-
 // === SUPPORT TICKETS ===
 export const supportTickets = pgTable("support_tickets", {
   id: serial("id").primaryKey(),
@@ -263,13 +225,6 @@ export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
   }),
 }));
 
-export const cardsRelations = relations(cards, ({ one }) => ({
-  user: one(users, {
-    fields: [cards.userId],
-    references: [users.id],
-  }),
-}));
-
 export const productsRelations = relations(products, ({ many }) => ({
   variants: many(variants),
 }));
@@ -309,10 +264,6 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
   stockItem: one(stockItems, {
     fields: [orderItems.stockItemId],
     references: [stockItems.id],
-  }),
-  card: one(cards, {
-    fields: [orderItems.cardId],
-    references: [cards.id],
   }),
 }));
 
@@ -363,15 +314,12 @@ export type Transaction = typeof transactions.$inferSelect;
 export type RedeemCode = typeof redeemCodes.$inferSelect;
 export type Announcement = typeof announcements.$inferSelect;
 export type UploadedImage = typeof uploadedImages.$inferSelect;
-export type Card = typeof cards.$inferSelect;
-
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type InsertVariant = z.infer<typeof insertVariantSchema>;
 export type InsertStockItem = z.infer<typeof insertStockItemSchema>;
 export type InsertRedeemCode = z.infer<typeof insertRedeemCodeSchema>;
 export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
-export type InsertCard = z.infer<typeof insertCardSchema>;
 export type CryptoPayment = typeof cryptoPayments.$inferSelect;
 
 // === SELLER APPLICATIONS ===
@@ -386,22 +334,6 @@ export const sellerApplications = pgTable("seller_applications", {
 
 export const insertSellerApplicationSchema = createInsertSchema(sellerApplications).omit({ id: true, status: true, createdAt: true });
 export type SellerApplication = typeof sellerApplications.$inferSelect;
-
-// === ACH ACCOUNTS ===
-export const achs = pgTable("achs", {
-  id: serial("id").primaryKey(),
-  bankName: text("bank_name").notNull(),
-  balance: text("balance").notNull(),
-  fullItem: text("full_item").notNull(),
-  price: integer("price").notNull(),
-  isSold: boolean("is_sold").default(false).notNull(),
-  sellerId: integer("seller_id").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const insertAchSchema = createInsertSchema(achs).omit({ id: true, isSold: true, sellerId: true, createdAt: true });
-export type Ach = typeof achs.$inferSelect;
-export type InsertAch = z.infer<typeof insertAchSchema>;
 
 // === CRYPTO ADDRESSES ===
 export const cryptoAddresses = pgTable("crypto_addresses", {

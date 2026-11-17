@@ -25,7 +25,6 @@ import { useToast } from "@/hooks/use-toast";
 const adminSections = [
   { id: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { id: "products",  label: "Products",  Icon: Package },
-  { id: "cards", label: "Cards",      Icon: CreditCard },
   { id: "orders",   label: "Orders",     Icon: ShoppingBag },
   { id: "cashapp",  label: "Payments",   Icon: DollarSign },
   { id: "deposits", label: "Deposits",   Icon: Wallet },
@@ -135,7 +134,6 @@ export default function AdminPage() {
         <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
           {activeSection === "dashboard"    && <DashboardSection />}
           {activeSection === "products"     && <ProductsSection />}
-          {activeSection === "cards"        && <AdminCardsSection />}
           {activeSection === "orders"       && <OrdersSection />}
           {activeSection === "cashapp"      && <CashAppSection />}
           {activeSection === "users"        && <UsersSection />}
@@ -197,7 +195,7 @@ function DashboardSection() {
     onSuccess: () => {
       setConfirmClear(false);
       queryClient.invalidateQueries();
-      toast({ title: "All data cleared", description: "Products, orders, cards, and balances have been wiped." });
+      toast({ title: "All data cleared", description: "Products, orders, and balances have been wiped." });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -218,7 +216,7 @@ function DashboardSection() {
       <div className="border border-red-500/20 bg-red-950/10 rounded-xl p-4 space-y-3">
         <div>
           <p className="text-sm font-bold text-red-400">Danger Zone</p>
-          <p className="text-xs text-white/45 mt-0.5">Permanently wipe all products, orders, cards, and reset all user balances to $0.</p>
+          <p className="text-xs text-white/45 mt-0.5">Permanently wipe all products and orders, and reset all user balances to $0.</p>
         </div>
         {!confirmClear ? (
           <button
@@ -1340,14 +1338,6 @@ function OrdersSection() {
             </div>
           )}
 
-          {groupedEntries.length === 0 && current.deliveryContent && current.orderId?.startsWith("ACH-") && (
-            <div className="space-y-2">
-              <p className="text-[10px] text-white/45">ACH Account Delivered</p>
-              <div className="px-3 py-2.5 rounded-xl bg-[#0d0d0d] border border-white/10">
-                <p className="text-xs font-mono text-white/70 whitespace-pre-wrap break-all">{current.deliveryContent}</p>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -2474,12 +2464,12 @@ function IntegrationsSection() {
 
 function FeatureTogglesCard() {
   const { toast } = useToast();
-  const { data: features, isLoading: featuresLoading } = useQuery<{ checker: boolean; reseller: boolean; ranks: boolean; logs: boolean; cards: boolean }>({
+  const { data: features, isLoading: featuresLoading } = useQuery<{ reseller: boolean; ranks: boolean; logs: boolean }>({
     queryKey: ["/api/settings/features"],
   });
 
   const toggleFeature = useMutation({
-    mutationFn: async (body: { checker?: boolean; reseller?: boolean; ranks?: boolean; logs?: boolean; cards?: boolean }) => {
+    mutationFn: async (body: { reseller?: boolean; ranks?: boolean; logs?: boolean }) => {
       const res = await apiRequest("POST", "/api/admin/settings/features", body);
       return res.json();
     },
@@ -2493,8 +2483,6 @@ function FeatureTogglesCard() {
   const FEATURES = [
     { key: "ranks" as const, label: "Ranks", desc: "Show/hide the Ranks page and nav link" },
     { key: "logs" as const, label: "Logs Shop", desc: "Show/hide the Logs shop page and nav link" },
-    { key: "cards" as const, label: "Cards", desc: "Show/hide the Cards page and nav link" },
-    { key: "checker" as const, label: "Card Checker", desc: "Show/hide the Checker page and nav link" },
     { key: "reseller" as const, label: "Become Reseller", desc: "Show/hide the Reseller application page" },
   ];
 

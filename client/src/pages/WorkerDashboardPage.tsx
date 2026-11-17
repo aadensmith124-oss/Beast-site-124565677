@@ -3,14 +3,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Briefcase, Package, ShoppingBag, Plus, Trash2, ChevronRight, Loader2, ShieldX, CreditCard, Users, DollarSign } from "lucide-react";
+import { Briefcase, Package, ShoppingBag, Plus, Trash2, ChevronRight, Loader2, ShieldX, Users, DollarSign } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const TABS = [
   { id: "products", label: "Products & Stock", Icon: Package },
-  { id: "cards", label: "Cards", Icon: CreditCard },
   { id: "orders", label: "Orders", Icon: ShoppingBag },
   { id: "users", label: "Add Balance", Icon: Users },
 ];
@@ -512,7 +511,7 @@ export default function WorkerDashboardPage() {
       </div>
 
       {/* Tabs */}
-      <div className="grid grid-cols-4 gap-1 bg-[#0d0d0d] rounded-lg p-1">
+      <div className="grid grid-cols-3 gap-1 bg-[#0d0d0d] rounded-lg p-1">
         {TABS.map(({ id, label, Icon }) => (
           <button
             key={id}
@@ -527,7 +526,6 @@ export default function WorkerDashboardPage() {
       </div>
 
       {activeTab === "products" && <ProductsTab />}
-      {activeTab === "cards" && <CardsTab />}
       {activeTab === "orders" && <OrdersTab />}
       {activeTab === "users" && <UsersBalanceTab />}
     </div>

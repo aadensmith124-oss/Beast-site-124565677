@@ -71,36 +71,11 @@ CREATE TABLE IF NOT EXISTS public.orders (
   created_at timestamp NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.card_bases (
-  id serial PRIMARY KEY,
-  name text NOT NULL UNIQUE,
-  created_at timestamp NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS public.cards (
-  id serial PRIMARY KEY,
-  card_number text NOT NULL,
-  masked_card text NOT NULL,
-  expiry text NOT NULL,
-  cvv text NOT NULL,
-  country text NOT NULL,
-  extras text DEFAULT '',
-  price integer NOT NULL,
-  hr_percent integer NOT NULL DEFAULT 80,
-  is_first_hand boolean NOT NULL DEFAULT false,
-  is_sold boolean NOT NULL DEFAULT false,
-  user_id integer REFERENCES public.users(id),
-  bin_data jsonb DEFAULT null,
-  base_id integer REFERENCES public.card_bases(id),
-  created_at timestamp NOT NULL DEFAULT now()
-);
-
 CREATE TABLE IF NOT EXISTS public.order_items (
   id serial PRIMARY KEY,
   order_id integer NOT NULL REFERENCES public.orders(id),
   variant_id integer,
   stock_item_id integer REFERENCES public.stock_items(id),
-  card_id integer REFERENCES public.cards(id),
   item_type text NOT NULL DEFAULT 'product',
   price integer NOT NULL,
   quantity integer NOT NULL DEFAULT 1
@@ -223,17 +198,6 @@ CREATE TABLE IF NOT EXISTS public.seller_applications (
   created_at timestamp NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.achs (
-  id serial PRIMARY KEY,
-  bank_name text NOT NULL,
-  balance text NOT NULL,
-  full_item text NOT NULL,
-  price integer NOT NULL,
-  is_sold boolean NOT NULL DEFAULT false,
-  seller_id integer REFERENCES public.users(id),
-  created_at timestamp NOT NULL DEFAULT now()
-);
-
 CREATE TABLE IF NOT EXISTS public.crypto_addresses (
   id serial PRIMARY KEY,
   user_id integer NOT NULL REFERENCES public.users(id),
@@ -326,10 +290,10 @@ DECLARE
 BEGIN
   FOREACH table_name IN ARRAY ARRAY[
     'users', 'uploaded_images', 'products', 'variants', 'stock_items',
-    'orders', 'card_bases', 'cards', 'order_items', 'transactions',
+    'orders', 'order_items', 'transactions',
     'redeem_codes', 'discount_codes', 'announcements', 'support_tickets',
     'verifications', 'user_ips', 'mails', 'mail_reads', 'crypto_payments',
-    'seller_applications', 'achs', 'crypto_addresses', 'site_settings',
+    'seller_applications', 'crypto_addresses', 'site_settings',
     'telegram_chat_members', 'telegram_chat_referrals',
     'telegram_chat_referral_bonuses', 'telegram_license_drops',
     'telegram_license_claims', 'telegram_suspensions',

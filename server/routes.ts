@@ -8,7 +8,7 @@ import { z } from "zod";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { createNowPaymentsInvoice, getNowPaymentsInvoice, mapNowPaymentsStatus, verifyNowPaymentsWebhook } from "./nowpayments.js";
 import { hashPassword, comparePassword } from "./auth.js";
-import { cryptoPayments, orders, orderItems, verifications, variants, userIps, users, mails, mailReads, discountCodes, transactions, stockItems, cards, achs, products, insertAnnouncementSchema } from "../shared/schema.js";
+import { cryptoPayments, orders, orderItems, verifications, variants, userIps, users, mails, mailReads, discountCodes, transactions, stockItems, products, insertAnnouncementSchema } from "../shared/schema.js";
 import { db } from "./db.js";
 import { eq, and, ne, desc, sql } from "drizzle-orm";
 import { MAX_LICENSE_FILE_BYTES, parseLicenseKeyFile } from "./license-key-file.js";
@@ -27,40 +27,6 @@ function requireAdmin(req: any, res: any, next: any) {
     });
   }
   next();
-}
-
-// BIN lookup cache + throttle queue (binlist.net = ~10 req/min free tier)
-const binCache = new Map<string, any>();
-const binQueue: Array<{ bin: string; resolve: (v: any) => void }> = [];
-let binQueueRunning = false;
-function processBinQueue() {
-  if (binQueueRunning || binQueue.length === 0) return;
-  binQueueRunning = true;
-  const { bin, resolve } = binQueue.shift()!;
-  fetch(`https://lookup.binlist.net/${bin}`, { headers: { "Accept-Version": "3" } })
-    .then(async r => {
-      if (!r.ok) { resolve({ bin }); return; }
-      const data = await r.json() as any;
-      const result = {
-        bin,
-        bank: data.bank?.name ?? null,
-        scheme: data.scheme ?? null,
-        type: data.type ?? null,
-        brand: data.brand ?? null,
-        country: data.country?.name ?? null,
-        countryCode: data.country?.alpha2 ?? null,
-      };
-      binCache.set(bin, result);
-      resolve(result);
-    })
-    .catch(() => resolve({ bin }))
-    .finally(() => {
-      setTimeout(() => { binQueueRunning = false; processBinQueue(); }, 700);
-    });
-}
-function lookupBin(bin: string): Promise<any> {
-  if (binCache.has(bin)) return Promise.resolve(binCache.get(bin));
-  return new Promise(resolve => { binQueue.push({ bin, resolve }); processBinQueue(); });
 }
 
 const gameLimiter = rateLimit({
@@ -225,12 +191,11 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
     try {
       const userId = (req.user as any).id;
-      const { items, cardIds, discountCodeId, sellerId } = req.body;
-      const productItems = (items || []).filter((i: any) => !i.cardId && i.variantId > 0)
+      const { items, discountCodeId, sellerId } = req.body;
+      const productItems = (items || []).filter((i: any) => i.variantId > 0)
         .map((i: any) => ({ ...i, sellerId: sellerId || i.sellerId || undefined }));
-      const cardIdList: number[] = cardIds || [];
 
-      const order = await storage.createOrder(userId, productItems, cardIdList, discountCodeId ?? null);
+      const order = await storage.createOrder(userId, productItems, discountCodeId ?? null);
       res.status(201).json(order);
     } catch (e: any) {
       res.status(400).json({ message: e.message });
@@ -877,7 +842,6 @@ export async function registerRoutes(
         orderId: order.id,
         variantId: variant.id,
         stockItemId: null,
-        cardId: null,
         itemType: "product",
         price: variant.price,
         quantity,
@@ -965,7 +929,6 @@ export async function registerRoutes(
       await db.delete(orders);
       await db.delete(variants);
       await db.delete(products);
-      await db.delete(cards);
       await db.delete(transactions);
       await db.update(users).set({ balance: 0, protectedBalance: 0 });
       res.json({ success: true });
@@ -1360,6 +1323,7 @@ export async function registerRoutes(
     res.send(buffer);
   });
 
+  /* Disabled legacy card-data routes. Their handlers are retired.
   // Cards
   // === CARD BASES ===
   app.get("/api/card-bases", async (req, res) => {
@@ -1611,6 +1575,8 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  */
+
   // Support
   app.post("/api/support", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
@@ -1669,11 +1635,10 @@ export async function registerRoutes(
     let pendingOrderId: number | null = null;
     try {
       const userId = (req.user as any).id;
-      const { items, cardIds, discountCodeId } = req.body;
-      const productItems = (items || []).filter((i: any) => !i.cardId && i.variantId > 0);
-      const cardIdList: number[] = cardIds || [];
+      const { items, discountCodeId } = req.body;
+      const productItems = (items || []).filter((i: any) => i.variantId > 0);
 
-      const order = await storage.createPendingOrder(userId, productItems, cardIdList, discountCodeId ?? null);
+      const order = await storage.createPendingOrder(userId, productItems, discountCodeId ?? null);
       pendingOrderId = order.id;
 
       const totalWithFee = order.total;
@@ -2095,7 +2060,7 @@ export async function registerRoutes(
     try {
       const userId = (req.user as any).id;
       const { items, amount } = req.body;
-      const productItems = (items || []).filter((i: any) => !i.cardId && i.variantId > 0);
+      const productItems = (items || []).filter((i: any) => i.variantId > 0);
       const paymentNote = generateNote();
       const cashappTag = await storage.getSetting("cashapp_tag", "");
 
@@ -2118,7 +2083,7 @@ export async function registerRoutes(
 
       // Checkout mode: reserve stock
       const { discountCodeId } = req.body;
-      const order = await storage.createPendingOrder(userId, productItems, [], discountCodeId ?? null);
+      const order = await storage.createPendingOrder(userId, productItems, discountCodeId ?? null);
       pendingOrderId = order.id;
 
       // Apply configured processing fee as a surcharge the buyer pays on top
@@ -2264,6 +2229,7 @@ export async function registerRoutes(
 
 
 
+  /* Disabled legacy ACH account-inventory routes.
   // ── ACH ──────────────────────────────────────────────────────
   app.get("/api/ach", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
@@ -2358,6 +2324,8 @@ export async function registerRoutes(
   });
 
 
+  */
+
   // ── SMTP Settings (admin) ──────────────────────────────────────
   app.get("/api/admin/smtp", async (req, res) => {
     if (!req.isAuthenticated() || (req.user as any).role !== "admin") {
@@ -2438,27 +2406,24 @@ export async function registerRoutes(
 
   // === FEATURE FLAGS ===
   app.get("/api/settings/features", async (_req, res) => {
-    const checker = await storage.getSetting("feature_checker", "true");
     const reseller = await storage.getSetting("feature_reseller", "true");
     const ranks = await storage.getSetting("feature_ranks", "true");
     const logs = await storage.getSetting("feature_logs", "true");
-    const cards = await storage.getSetting("feature_cards", "true");
-    res.json({ checker: checker !== "false", reseller: reseller !== "false", ranks: ranks !== "false", logs: logs !== "false", cards: cards !== "false" });
+    res.json({ reseller: reseller !== "false", ranks: ranks !== "false", logs: logs !== "false" });
   });
 
   app.post("/api/admin/settings/features", async (req, res) => {
     if (!req.isAuthenticated() || (req.user as any).role !== "admin") {
       return res.status(401).json({ message: "Unauthorized" });
     }
-    const { checker, reseller, ranks, logs, cards } = req.body;
-    if (checker !== undefined) await storage.setSetting("feature_checker", checker ? "true" : "false");
+    const { reseller, ranks, logs } = req.body;
     if (reseller !== undefined) await storage.setSetting("feature_reseller", reseller ? "true" : "false");
     if (ranks !== undefined) await storage.setSetting("feature_ranks", ranks ? "true" : "false");
     if (logs !== undefined) await storage.setSetting("feature_logs", logs ? "true" : "false");
-    if (cards !== undefined) await storage.setSetting("feature_cards", cards ? "true" : "false");
     res.json({ ok: true });
   });
 
+  /* Disabled legacy raw-card validation and order-check handlers.
   // === CARD CHECKER ===
   app.post("/api/checker/check", async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
@@ -2585,6 +2550,8 @@ export async function registerRoutes(
       return res.json({ live: false, message: "Card Declined — $0.50 refunded to your wallet." });
     }
   });
+
+  */
 
   return httpServer;
 }

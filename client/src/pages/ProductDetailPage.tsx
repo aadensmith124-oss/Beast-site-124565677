@@ -48,7 +48,6 @@ export default function ProductDetailPage() {
       if (quantity < minQty) throw new Error(`Minimum order is ${minQty}`);
       const body: any = {
         items: [{ variantId: selectedVariant.id, quantity }],
-        cardIds: [],
       };
       const res = await apiRequest("POST", "/api/orders", body);
       if (!res.ok) {

@@ -1,10 +1,8 @@
 import { useRoute, useLocation } from "wouter";
 import { useOrders } from "@/hooks/use-orders";
-import { Loader2, ChevronLeft, ChevronDown, ChevronUp, Copy, Check, ShieldCheck } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 
 function statusLabel(s: string) {
   if (s === "pending") return "pending";
@@ -40,23 +38,7 @@ export default function OrderDetailPageNew() {
   const [activeTab, setActiveTab] = useState<"info" | "products">("info");
   const [stockVisible, setStockVisible] = useState<Record<string, boolean>>({});
   const [copied, setCopied] = useState<Record<string, boolean>>({});
-  const [liveCheckResult, setLiveCheckResult] = useState<{ live: boolean; message: string } | null>(null);
   const { toast } = useToast();
-
-  const liveCheckMutation = useMutation({
-    mutationFn: async (orderId: number) => {
-      const res = await apiRequest("POST", `/api/orders/${orderId}/live-check`, {});
-      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.message || "Failed"); }
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setLiveCheckResult(data);
-      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-    },
-    onError: (e: Error) => {
-      toast({ title: "Live Check Failed", description: e.message, variant: "destructive" });
-    },
-  });
 
   const order = orders?.find((o: any) => o.orderId === params?.id || o.id.toString() === params?.id);
 
@@ -77,32 +59,18 @@ export default function OrderDetailPageNew() {
   const expected = order.total;
 
   const allItems = order.items || [];
-  const grouped: { key: string; productName: string; variantName: string; qty: number; unitPrice: number; itemType: string; cardContent?: string }[] = [];
+  const grouped: { key: string; productName: string; variantName: string; qty: number; unitPrice: number }[] = [];
   const seen: Record<string, number> = {};
   for (const item of allItems) {
-    const isCard = item.itemType === "card";
-    const isAchItem = item.itemType === "ach";
-    const key = isCard ? `card-${item.cardId ?? item.id}` : isAchItem ? `ach-${item.id}` : String(item.variantId || item.id);
+    const key = String(item.variantId || item.id);
     if (seen[key] === undefined) {
       seen[key] = grouped.length;
       grouped.push({
         key,
-        productName: isCard
-          ? (item.card?.maskedCard ? `Card ${item.card.maskedCard}` : "Card")
-          : isAchItem
-          ? "ACH Account"
-          : (item.productName || "Product"),
-        variantName: isCard
-          ? (item.card?.country ?? "—")
-          : isAchItem
-          ? "Bank Account"
-          : (item.variant?.name || item.variantName || "—"),
+        productName: item.productName || "Product",
+        variantName: item.variant?.name || item.variantName || "—",
         qty: item.quantity ?? 1,
         unitPrice: item.price,
-        itemType: item.itemType ?? "product",
-        cardContent: isCard && item.card
-          ? [item.card.cardNumber, item.card.expiry, item.card.cvv, item.card.country, item.card.extras].filter(Boolean).join("|")
-          : undefined,
       });
     } else {
       grouped[seen[key]].qty += item.quantity ?? 1;
@@ -114,8 +82,6 @@ export default function OrderDetailPageNew() {
 
   const getStockForKey = (item: typeof grouped[0]): string | null => {
     if (!isFulfilled) return null;
-    if (item.itemType === "card") return item.cardContent || null;
-    if (item.itemType === "ach") return order.deliveryContent || null;
     if (deliveryMap) return deliveryMap[item.key] || null;
     return order.deliveryContent || null;
   };
@@ -183,9 +149,7 @@ export default function OrderDetailPageNew() {
               const key = "direct";
               const isOpen = !!stockVisible[key];
               const wasCopied = !!copied[key];
-              const isAch = (order.orderId ?? "").startsWith("ACH-");
-              const isCard = (order.orderId ?? "").startsWith("CARD-");
-              const label = isAch ? "ACH Account" : isCard ? "Card" : "Item";
+              const label = "Item";
               return (
                 <div className="space-y-4">
                   <InfoRow label="Type" value={<span className="font-bold text-sm text-white">{label}</span>} />
@@ -242,9 +206,7 @@ export default function OrderDetailPageNew() {
                           className="w-full h-11 rounded-xl bg-[#3b5bdb] hover:bg-[#3451c7] text-white font-bold text-sm transition-colors flex items-center justify-center gap-2"
                         >
                           {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                          {isOpen
-                            ? `Hide ${item.itemType === "card" ? "Card" : item.itemType === "ach" ? "Account" : "Stock"}`
-                            : `View ${item.itemType === "card" ? "Card" : item.itemType === "ach" ? "Account" : "Stock"}`}
+                          {isOpen ? "Hide Stock" : "View Stock"}
                         </button>
 
                         {isOpen && (
