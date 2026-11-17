@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { Link } from "wouter";
 import {
   Loader2, Copy, Check, Clock, CheckCircle2, XCircle, AlertTriangle,
   RefreshCw, ExternalLink, Send
@@ -279,12 +280,6 @@ export default function DepositPage() {
     <div className="min-h-screen flex flex-col">
       <div className="flex-1 max-w-lg mx-auto w-full px-4 py-6 space-y-5">
 
-        {/* ── Hero ── */}
-        <div className="text-center pt-2 pb-2 space-y-1">
-          <h1 className="text-3xl sm:text-4xl font-black text-primary tracking-wide uppercase">GorillaCC</h1>
-          <p className="text-sm text-white/50">Providing high quality cards since 2026.</p>
-        </div>
-
         {manualResult ? (
           <ManualDepositPanel result={manualResult} onReset={() => { setManualResult(null); setSelectedOption(null); setAmountInput(""); }} />
         ) : (
@@ -365,8 +360,7 @@ export default function DepositPage() {
             className="flex items-center justify-center h-5 w-5 rounded-full bg-primary">
             <Send className="h-2.5 w-2.5 text-white fill-white" />
           </a>
-          <span>TOS</span>
-          <span>FAQs</span>
+          <Link href="/tos" className="hover:text-white transition-colors">TOS</Link>
         </div>
         <p className="text-xs text-white/25">© 2026 GorillaCC. All rights reserved</p>
       </div>

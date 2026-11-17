@@ -96,7 +96,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }] : []),
   ];
 
-  const isEntryPage = location === "/auth";
+  const isEntryPage = location === "/auth" || location === "/tos";
   if (isEntryPage) return <>{children}</>;
 
   return (

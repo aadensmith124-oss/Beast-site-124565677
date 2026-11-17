@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Send, Clock, CheckCircle2, RefreshCw, TicketCheck } from "lucide-react";
+import { Link } from "wouter";
 
 type Ticket = {
   id: number;
@@ -237,8 +238,7 @@ export default function SupportPage() {
             className="flex items-center justify-center h-5 w-5 rounded-full bg-primary">
             <Send className="h-2.5 w-2.5 text-white fill-white" />
           </a>
-          <span>TOS</span>
-          <span>FAQs</span>
+          <Link href="/tos" className="hover:text-white transition-colors">TOS</Link>
         </div>
         <p className="text-xs text-white/25">© 2026 GorillaCC. All rights reserved</p>
       </div>

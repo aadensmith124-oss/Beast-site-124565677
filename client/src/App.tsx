@@ -28,6 +28,7 @@ import BecomeResellerPage from "@/pages/BecomeSellerPage";
 import ProfilePage from "@/pages/ProfilePage";
 import SupportPage from "@/pages/SupportPage";
 import RedeemCodePage from "@/pages/RedeemCodePage";
+import TermsOfServicePage from "@/pages/TermsOfServicePage";
 
 function LoadingScreen() {
   return (
@@ -65,7 +66,7 @@ function Router() {
   useForebitPolling();
 
   useEffect(() => {
-    if (!isLoading && !isError && !user && location !== "/auth") {
+    if (!isLoading && !isError && !user && location !== "/auth" && location !== "/tos") {
       setLocation("/auth");
     }
   }, [user, isLoading, isError, location, setLocation]);
@@ -82,6 +83,7 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/auth" component={AuthPage} />
+        <Route path="/tos" component={TermsOfServicePage} />
         <Route path="/" component={CardsPage} />
         <Route path="/deposit" component={DepositPage} />
         <Route path="/shop" component={LogsPage} />

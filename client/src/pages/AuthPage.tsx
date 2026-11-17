@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { Redirect } from "wouter";
-import { Loader2, Eye, EyeOff, RefreshCw, Send, CreditCard } from "lucide-react";
+import { Link, Redirect } from "wouter";
+import { Loader2, Eye, EyeOff, RefreshCw, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 /* ── SVG Captcha ──────────────────────────────────────────── */
@@ -20,17 +20,17 @@ function CaptchaImage({ code, tick, width = 200, height = 52 }: { code: string; 
   }));
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ userSelect: "none", display: "block" }}>
-      <rect width={width} height={height} fill="#f8f8f6" rx="4" />
+      <rect width={width} height={height} fill="#1a1a1a" rx="4" />
       {noises.map(n => (
         <line key={n.key} x1={n.x1} y1={n.y1} x2={n.x2} y2={n.y2}
-          stroke={`hsl(${randomInt(20,50)},60%,50%)`} strokeWidth="1.2" opacity="0.5" />
+          stroke={`hsl(${randomInt(42,82)},55%,55%)`} strokeWidth="1" opacity="0.28" />
       ))}
       {chars.map((ch, i) => {
         const x = cellW * i + cellW / 2 + randomInt(-3, 3);
         const y = height / 2 + randomInt(-4, 4);
         const rotate = randomInt(-22, 22);
         const size = randomInt(20, 28);
-        const color = `hsl(${randomInt(20, 45)},80%,${randomInt(25, 45)}%)`;
+        const color = `hsl(${randomInt(42, 82)},65%,${randomInt(68, 82)}%)`;
         return (
           <text key={i} x={x} y={y} dominantBaseline="middle" textAnchor="middle"
             fontSize={size} fill={color} fontWeight="bold" fontFamily="Georgia, serif"
@@ -40,7 +40,7 @@ function CaptchaImage({ code, tick, width = 200, height = 52 }: { code: string; 
       })}
       {Array.from({ length: 40 }, (_, i) => (
         <circle key={i} cx={randomInt(0, width)} cy={randomInt(0, height)}
-          r={randomInt(1, 2)} fill={`hsl(${randomInt(0, 360)},40%,50%)`} opacity="0.35" />
+          r={randomInt(1, 2)} fill={`hsl(${randomInt(42, 82)},55%,60%)`} opacity="0.22" />
       ))}
     </svg>
   );
@@ -149,10 +149,10 @@ function LoginForm({ onSwitchToRegister }: { onSwitchToRegister: () => void }) {
         </div>
 
         {/* Captcha */}
-        <div className="bg-white rounded overflow-hidden flex items-center px-3 py-2 gap-3">
+        <div className="bg-[#1a1a1a] border border-white/10 rounded overflow-hidden flex items-center px-3 py-2 gap-3">
           <div className="flex-1">
             <div className="flex items-center gap-3">
-              <div className="rounded overflow-hidden border border-gray-200">
+              <div className="rounded overflow-hidden border border-white/10">
                 <CaptchaImage code={captchaCode} tick={captchaTick} width={120} height={44} />
               </div>
               <input
@@ -162,13 +162,13 @@ function LoginForm({ onSwitchToRegister }: { onSwitchToRegister: () => void }) {
                 placeholder="Enter code"
                 disabled={isLoggingIn}
                 autoComplete="off"
-                className="flex-1 text-sm text-black bg-transparent outline-none placeholder:text-gray-400 tracking-widest"
+                className="flex-1 min-w-0 text-sm text-white bg-transparent outline-none placeholder:text-white/30 tracking-widest"
                 data-testid="input-captcha"
               />
             </div>
           </div>
           <button type="button" onClick={() => { refreshCaptcha(); setCaptchaInput(""); }}
-            className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0" data-testid="btn-refresh-captcha">
+            className="text-white/40 hover:text-primary transition-colors flex-shrink-0" data-testid="btn-refresh-captcha">
             <RefreshCw className="h-4 w-4" />
           </button>
         </div>
@@ -277,8 +277,7 @@ function AuthFooter() {
           className="flex items-center justify-center h-5 w-5 rounded-full bg-primary">
           <Send className="h-2.5 w-2.5 text-white fill-white" />
         </a>
-        <span>TOS</span>
-        <span>FAQs</span>
+        <Link href="/tos" className="hover:text-white transition-colors">TOS</Link>
       </div>
       <p className="text-xs text-white/25">© 2026 GorillaCC. All rights reserved</p>
     </div>
@@ -296,14 +295,6 @@ export default function AuthPage() {
     <div className="min-h-screen flex flex-col" style={{ background: "#0d0d0d" }}>
       <div className="flex-1 flex flex-col items-center justify-center px-5 py-10">
         <div className="w-full max-w-[380px]">
-          <div className="flex flex-col items-center mb-8" aria-label="GorillaCC">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 shadow-[0_0_28px_rgba(154,203,63,0.12)]">
-              <CreditCard className="h-6 w-6 text-primary" strokeWidth={1.8} />
-            </div>
-            <div className="mt-3 text-lg font-black uppercase tracking-[0.2em] text-primary">
-              GorillaCC
-            </div>
-          </div>
           {tab === "login"
             ? <LoginForm onSwitchToRegister={() => setTab("register")} />
             : <RegisterForm onSwitchToLogin={() => setTab("login")} />
