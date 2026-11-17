@@ -2820,9 +2820,15 @@ function AdminBasesTab() {
   const { toast } = useToast();
   const qc = queryClient;
   const [newBaseName, setNewBaseName] = useState("");
+  const [newBaseRefundable, setNewBaseRefundable] = useState<"unknown" | "yes" | "no">("unknown");
+  const [newBaseValidRate, setNewBaseValidRate] = useState("");
   const [expandedBase, setExpandedBase] = useState<number | null>(null);
   const [editingBaseId, setEditingBaseId] = useState<number | null>(null);
   const [editingBaseName, setEditingBaseName] = useState("");
+  const [editingBaseRefundable, setEditingBaseRefundable] = useState<"unknown" | "yes" | "no">("unknown");
+  const [editingBaseValidRate, setEditingBaseValidRate] = useState("");
+  const isValidRateInput = (value: string) =>
+    value.trim() === "" || (Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 100);
 
   const { data: bases, isLoading } = useQuery<any[]>({ queryKey: ["/api/card-bases"], refetchInterval: 5000 });
   const { data: baseCards } = useQuery<any[]>({
@@ -2838,17 +2844,33 @@ function AdminBasesTab() {
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!newBaseName.trim()) throw new Error("Name required");
-      const res = await apiRequest("POST", "/api/admin/card-bases", { name: newBaseName.trim() });
+      if (!isValidRateInput(newBaseValidRate)) throw new Error("Valid rate must be between 0 and 100");
+      const res = await apiRequest("POST", "/api/admin/card-bases", {
+        name: newBaseName.trim(),
+        isRefundable: newBaseRefundable === "unknown" ? null : newBaseRefundable === "yes",
+        validRate: newBaseValidRate.trim() === "" ? null : Number(newBaseValidRate),
+      });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/card-bases"] }); setNewBaseName(""); toast({ title: "Base created" }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/card-bases"] });
+      setNewBaseName("");
+      setNewBaseRefundable("unknown");
+      setNewBaseValidRate("");
+      toast({ title: "Base created" });
+    },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const renameMutation = useMutation({
-    mutationFn: async ({ id, name }: { id: number; name: string }) => {
-      const res = await apiRequest("PATCH", `/api/admin/card-bases/${id}`, { name });
+    mutationFn: async ({ id, name, isRefundable, validRate }: {
+      id: number;
+      name: string;
+      isRefundable: boolean | null;
+      validRate: number | null;
+    }) => {
+      const res = await apiRequest("PATCH", `/api/admin/card-bases/${id}`, { name, isRefundable, validRate });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
     },
@@ -2857,7 +2879,7 @@ function AdminBasesTab() {
       qc.invalidateQueries({ queryKey: ["/api/cards"] });
       setEditingBaseId(null);
       setEditingBaseName("");
-      toast({ title: "Base renamed" });
+      toast({ title: "Base settings saved" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -2896,10 +2918,45 @@ function AdminBasesTab() {
             className="bg-[#111]/5 border-white/10 text-sm flex-1"
             data-testid="input-base-name"
           />
-          <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !newBaseName.trim()} size="sm" className="h-9" data-testid="btn-create-base">
-            {createMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Create"}
-          </Button>
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="space-y-1">
+            <span className="block text-[10px] text-white/45 uppercase tracking-widest">Refundable</span>
+            <select
+              value={newBaseRefundable}
+              onChange={e => setNewBaseRefundable(e.target.value as "unknown" | "yes" | "no")}
+              className="w-full h-9 rounded-md border border-white/10 bg-[#0d0d0d] px-2 text-xs text-white outline-none focus:border-primary/50"
+              data-testid="select-new-base-refundable"
+            >
+              <option value="unknown">Not specified</option>
+              <option value="yes">Refundable</option>
+              <option value="no">Not refundable</option>
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="block text-[10px] text-white/45 uppercase tracking-widest">Valid rate (%)</span>
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={newBaseValidRate}
+              onChange={e => setNewBaseValidRate(e.target.value)}
+              placeholder="0–100"
+              className="bg-[#111]/5 border-white/10 text-sm h-9"
+              data-testid="input-new-base-valid-rate"
+            />
+          </label>
+        </div>
+        <Button
+          onClick={() => createMutation.mutate()}
+          disabled={createMutation.isPending || !newBaseName.trim() || !isValidRateInput(newBaseValidRate)}
+          size="sm"
+          className="h-9"
+          data-testid="btn-create-base"
+        >
+            {createMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Create"}
+        </Button>
       </div>
 
       {/* Bases list */}
@@ -2914,32 +2971,43 @@ function AdminBasesTab() {
               <div className="px-4 py-3 flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   {editingBaseId === b.id ? (
-                    <div className="flex items-center gap-2">
+                    <div className="w-full space-y-2">
                       <Input
                         value={editingBaseName}
                         onChange={e => setEditingBaseName(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && editingBaseName.trim()) renameMutation.mutate({ id: b.id, name: editingBaseName });
-                          if (e.key === "Escape") { setEditingBaseId(null); setEditingBaseName(""); }
-                        }}
-                        className="bg-[#111]/5 border-white/10 h-7 text-xs font-mono flex-1"
+                        className="bg-[#111]/5 border-white/10 h-8 text-xs font-mono"
                         autoFocus
                         data-testid={`input-rename-base-${b.id}`}
                       />
-                      <button
-                        onClick={() => { if (editingBaseName.trim()) renameMutation.mutate({ id: b.id, name: editingBaseName }); }}
-                        disabled={renameMutation.isPending || !editingBaseName.trim()}
-                        className="text-[10px] font-mono px-2 py-1 rounded border border-primary/40 text-primary hover:bg-primary/10 transition-all disabled:opacity-50"
-                        data-testid={`btn-save-rename-base-${b.id}`}
-                      >
-                        {renameMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "save"}
-                      </button>
-                      <button
-                        onClick={() => { setEditingBaseId(null); setEditingBaseName(""); }}
-                        className="text-[10px] font-mono px-2 py-1 rounded border border-white/10 text-white/45 hover:text-white transition-all"
-                      >
-                        cancel
-                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="space-y-1">
+                          <span className="block text-[9px] text-white/40 uppercase tracking-widest">Refundable</span>
+                          <select
+                            value={editingBaseRefundable}
+                            onChange={e => setEditingBaseRefundable(e.target.value as "unknown" | "yes" | "no")}
+                            className="w-full h-8 rounded-md border border-white/10 bg-[#0d0d0d] px-2 text-[11px] text-white outline-none focus:border-primary/50"
+                            data-testid={`select-base-refundable-${b.id}`}
+                          >
+                            <option value="unknown">Not specified</option>
+                            <option value="yes">Refundable</option>
+                            <option value="no">Not refundable</option>
+                          </select>
+                        </label>
+                        <label className="space-y-1">
+                          <span className="block text-[9px] text-white/40 uppercase tracking-widest">Valid rate (%)</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={editingBaseValidRate}
+                            onChange={e => setEditingBaseValidRate(e.target.value)}
+                            placeholder="0–100"
+                            className="bg-[#111]/5 border-white/10 text-xs h-8"
+                            data-testid={`input-base-valid-rate-${b.id}`}
+                          />
+                        </label>
+                      </div>
                     </div>
                   ) : (
                     <button
@@ -2949,17 +3017,27 @@ function AdminBasesTab() {
                     >
                       <p className="text-sm font-bold text-white font-mono">{b.name}</p>
                       <p className="text-[10px] text-white/40">{b.count} card{b.count !== 1 ? "s" : ""} in stock</p>
+                      <p className="text-[10px] text-white/35">
+                        Refundable: {b.isRefundable === true ? "Yes" : b.isRefundable === false ? "No" : "Not specified"}
+                        {" · "}Valid rate: {b.validRate == null ? "Not specified" : `${Number(b.validRate).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`}
+                      </p>
                     </button>
                   )}
                 </div>
                 {editingBaseId !== b.id && (
                   <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => { setEditingBaseId(b.id); setEditingBaseName(b.name); setExpandedBase(null); }}
+                      onClick={() => {
+                        setEditingBaseId(b.id);
+                        setEditingBaseName(b.name);
+                        setEditingBaseRefundable(b.isRefundable === true ? "yes" : b.isRefundable === false ? "no" : "unknown");
+                        setEditingBaseValidRate(b.validRate == null ? "" : String(b.validRate));
+                        setExpandedBase(null);
+                      }}
                       className="text-[10px] font-mono px-2 py-1 rounded border border-white/10 text-white/45 hover:border-white/25 hover:text-white transition-all"
                       data-testid={`btn-rename-base-${b.id}`}
                     >
-                      rename
+                      edit
                     </button>
                     <button
                       onClick={() => setExpandedBase(expandedBase === b.id ? null : b.id)}
@@ -2975,6 +3053,32 @@ function AdminBasesTab() {
                       data-testid={`btn-delete-base-${b.id}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+                {editingBaseId === b.id && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        if (!editingBaseName.trim() || !isValidRateInput(editingBaseValidRate)) return;
+                        renameMutation.mutate({
+                          id: b.id,
+                          name: editingBaseName,
+                          isRefundable: editingBaseRefundable === "unknown" ? null : editingBaseRefundable === "yes",
+                          validRate: editingBaseValidRate.trim() === "" ? null : Number(editingBaseValidRate),
+                        });
+                      }}
+                      disabled={renameMutation.isPending || !editingBaseName.trim() || !isValidRateInput(editingBaseValidRate)}
+                      className="text-[10px] font-mono px-2 py-1 rounded border border-primary/40 text-primary hover:bg-primary/10 transition-all disabled:opacity-50"
+                      data-testid={`btn-save-rename-base-${b.id}`}
+                    >
+                      {renameMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "save"}
+                    </button>
+                    <button
+                      onClick={() => { setEditingBaseId(null); setEditingBaseName(""); }}
+                      className="text-[10px] font-mono px-2 py-1 rounded border border-white/10 text-white/45 hover:text-white transition-all"
+                    >
+                      cancel
                     </button>
                   </div>
                 )}
@@ -3028,6 +3132,7 @@ function AdminCardsSection() {
   const [tab, setTab] = useState<"stock" | "bases">("stock");
   const [fullItem, setFullItem] = useState("");
   const [price, setPrice] = useState("");
+  const [refundable, setRefundable] = useState<"yes" | "no" | "unknown">("unknown");
   const [selectedBaseId, setSelectedBaseId] = useState<string>("");
 
   const { data: cards, isLoading } = useQuery<any[]>({ queryKey: ["/api/cards"] });
@@ -3043,7 +3148,12 @@ function AdminCardsSection() {
       if (!fullItem.trim()) throw new Error("Full item is required");
       if (!price || parseFloat(price) <= 0) throw new Error("Valid price is required");
       if (!selectedBaseId) throw new Error("Base is required");
-      const body: any = { extras: fullItem.trim(), price: parseFloat(price), baseId: Number(selectedBaseId) };
+      const body: any = {
+        extras: fullItem.trim(),
+        price: parseFloat(price),
+        baseId: Number(selectedBaseId),
+        isRefundable: refundable === "yes" ? true : refundable === "no" ? false : null,
+      };
       const res = await apiRequest("POST", "/api/cards", body);
       if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Failed to add card"); }
       return res.json();
@@ -3051,7 +3161,7 @@ function AdminCardsSection() {
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ["/api/cards"] });
       qc.invalidateQueries({ queryKey: ["/api/card-bases"] });
-      setFullItem(""); setPrice(""); setSelectedBaseId("");
+      setFullItem(""); setPrice(""); setRefundable("unknown"); setSelectedBaseId("");
       const count = data?.count ?? 1;
       toast({ title: count > 1 ? `${count} cards added` : "Card added" });
     },
@@ -3123,6 +3233,20 @@ function AdminCardsSection() {
             className="bg-[#111]/5 border-white/10"
             data-testid="input-card-price"
           />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] text-white/45 uppercase tracking-widest">Refundable</label>
+          <select
+            value={refundable}
+            onChange={e => setRefundable(e.target.value as "yes" | "no" | "unknown")}
+            className="w-full rounded border border-white/10 bg-[#111]/5 px-2 py-2 text-xs text-white outline-none focus:border-primary/50"
+            data-testid="select-card-refundable"
+          >
+            <option value="unknown">Not specified</option>
+            <option value="yes">Refundable</option>
+            <option value="no">Not refundable</option>
+          </select>
         </div>
 
         <Button

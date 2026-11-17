@@ -1372,8 +1372,21 @@ export async function registerRoutes(
     if (!req.isAuthenticated() || (req.user as any).role !== "admin") return res.status(401).json({ message: "Unauthorized" });
     const { name } = req.body;
     if (!name?.trim()) return res.status(400).json({ message: "Name required" });
+    const refundable = req.body.isRefundable ?? null;
+    const rawValidRate = req.body.validRate;
+    const validRate = rawValidRate == null || rawValidRate === "" ? null : Number(rawValidRate);
+    if (refundable !== null && typeof refundable !== "boolean") {
+      return res.status(400).json({ message: "Refundable must be true, false, or unspecified" });
+    }
+    if (rawValidRate != null && rawValidRate !== "" && (validRate == null || !Number.isFinite(validRate) || validRate < 0 || validRate > 100)) {
+      return res.status(400).json({ message: "Valid rate must be between 0 and 100" });
+    }
     try {
-      const base = await storage.createCardBase(name.trim());
+      const base = await storage.createCardBase({
+        name: name.trim(),
+        isRefundable: refundable,
+        validRate,
+      });
       res.status(201).json(base);
     } catch (e: any) {
       res.status(400).json({ message: e.message });
@@ -1382,10 +1395,31 @@ export async function registerRoutes(
 
   app.patch("/api/admin/card-bases/:id", async (req, res) => {
     if (!req.isAuthenticated() || (req.user as any).role !== "admin") return res.status(401).json({ message: "Unauthorized" });
-    const { name } = req.body;
-    if (!name?.trim()) return res.status(400).json({ message: "Name required" });
+    const updates: { name?: string; isRefundable?: boolean | null; validRate?: number | null } = {};
+    if ("name" in req.body) {
+      if (typeof req.body.name !== "string" || !req.body.name.trim()) {
+        return res.status(400).json({ message: "Name required" });
+      }
+      updates.name = req.body.name.trim();
+    }
+    if ("isRefundable" in req.body) {
+      if (req.body.isRefundable !== null && typeof req.body.isRefundable !== "boolean") {
+        return res.status(400).json({ message: "Refundable must be true, false, or unspecified" });
+      }
+      updates.isRefundable = req.body.isRefundable;
+    }
+    if ("validRate" in req.body) {
+      const rawValidRate = req.body.validRate;
+      const validRate = rawValidRate == null || rawValidRate === "" ? null : Number(rawValidRate);
+      if (rawValidRate != null && rawValidRate !== "" && (validRate == null || !Number.isFinite(validRate) || validRate < 0 || validRate > 100)) {
+        return res.status(400).json({ message: "Valid rate must be between 0 and 100" });
+      }
+      updates.validRate = validRate;
+    }
+    if (Object.keys(updates).length === 0) return res.status(400).json({ message: "No base settings provided" });
     try {
-      const base = await storage.updateCardBase(Number(req.params.id), name.trim());
+      const base = await storage.updateCardBase(Number(req.params.id), updates);
+      if (!base) return res.status(404).json({ message: "Base not found" });
       res.json(base);
     } catch (e: any) {
       res.status(400).json({ message: e.message });
@@ -1413,9 +1447,8 @@ export async function registerRoutes(
     const baseId = req.query.baseId ? Number(req.query.baseId) : null;
     const baseFilter = baseId ? sql`AND c.base_id = ${baseId}` : sql``;
     const { rows } = await db.execute(sql`
-      SELECT c.id, c.card_number, c.masked_card, c.expiry, c.cvv, c.country, c.extras,
-             c.price, c.hr_percent, c.is_sold, c.is_first_hand, c.user_id, c.created_at, c.bin_data,
-             c.base_id, cb.name as base_name
+      SELECT c.*, cb.name as base_name,
+             cb.is_refundable as base_is_refundable, cb.valid_rate as base_valid_rate
       FROM cards c
       LEFT JOIN card_bases cb ON cb.id = c.base_id
       WHERE c.is_sold = false ${baseFilter}
@@ -1441,6 +1474,8 @@ export async function registerRoutes(
       id: r.id, cardNumber: r.card_number, maskedCard: r.masked_card,
       expiry: r.expiry, cvv: r.cvv, country: r.country, extras: r.extras,
       price: r.price, hrPercent: r.hr_percent ?? 80, isSold: r.is_sold, isFirstHand: r.is_first_hand,
+      isRefundable: r.base_is_refundable ?? r.is_refundable ?? null,
+      validRate: r.base_valid_rate == null ? null : Number(r.base_valid_rate),
       userId: r.user_id, createdAt: r.created_at,
       binData: r.bin_data ?? null,
       baseId: r.base_id ?? null, baseName: r.base_name ?? null,
@@ -1514,6 +1549,7 @@ export async function registerRoutes(
         price: priceCents,
         isFirstHand: false,
         hrPercent: 80,
+        ...(typeof req.body.isRefundable === "boolean" ? { isRefundable: req.body.isRefundable } : {}),
         ...(baseId ? { baseId } : {}),
       } as any);
 

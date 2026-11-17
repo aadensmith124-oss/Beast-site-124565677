@@ -178,6 +178,8 @@ export const insertAnnouncementSchema = createInsertSchema(announcements).omit({
 export const cardBases = pgTable("card_bases", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
+  isRefundable: boolean("is_refundable"),
+  validRate: real("valid_rate"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type CardBase = typeof cardBases.$inferSelect;
@@ -193,6 +195,7 @@ export const cards = pgTable("cards", {
   price: integer("price").notNull(),
   hrPercent: integer("hr_percent").default(80).notNull(),
   isFirstHand: boolean("is_first_hand").default(false).notNull(),
+  isRefundable: boolean("is_refundable"),
   isSold: boolean("is_sold").default(false).notNull(),
   userId: integer("user_id").references(() => users.id),
   binData: jsonb("bin_data").$type<{ bin: string; bank: string | null; scheme: string | null; type: string | null; brand: string | null; country: string | null; countryCode: string | null } | null>().default(null),

@@ -107,7 +107,8 @@ export interface IStorage {
 
   // Card Bases
   getCardBasesWithCount(): Promise<(CardBase & { count: number })[]>;
-  createCardBase(name: string): Promise<CardBase>;
+  createCardBase(data: Pick<CardBase, "name"> & Partial<Pick<CardBase, "isRefundable" | "validRate">>): Promise<CardBase>;
+  updateCardBase(id: number, data: Partial<Pick<CardBase, "name" | "isRefundable" | "validRate">>): Promise<CardBase | undefined>;
   deleteCardBase(id: number): Promise<void>;
   getCardsByBase(baseId: number): Promise<Card[]>;
 
@@ -1179,25 +1180,30 @@ export class DatabaseStorage implements IStorage {
 
   async getCardBasesWithCount(): Promise<(CardBase & { count: number })[]> {
     const result = await db.execute(sql`
-      SELECT cb.id, cb.name, cb.created_at,
+      SELECT cb.id, cb.name, cb.is_refundable, cb.valid_rate, cb.created_at,
              COUNT(c.id) FILTER (WHERE c.is_sold = false) as count
       FROM card_bases cb
       LEFT JOIN cards c ON c.base_id = cb.id
-      GROUP BY cb.id, cb.name, cb.created_at
+      GROUP BY cb.id, cb.name, cb.is_refundable, cb.valid_rate, cb.created_at
       ORDER BY cb.name
     `);
     return (result.rows as any[]).map((r: any) => ({
-      id: r.id, name: r.name, createdAt: r.created_at, count: Number(r.count)
+      id: r.id,
+      name: r.name,
+      isRefundable: r.is_refundable ?? null,
+      validRate: r.valid_rate == null ? null : Number(r.valid_rate),
+      createdAt: r.created_at,
+      count: Number(r.count),
     }));
   }
 
-  async createCardBase(name: string): Promise<CardBase> {
-    const [base] = await db.insert(cardBases).values({ name }).returning();
+  async createCardBase(data: Pick<CardBase, "name"> & Partial<Pick<CardBase, "isRefundable" | "validRate">>): Promise<CardBase> {
+    const [base] = await db.insert(cardBases).values(data).returning();
     return base;
   }
 
-  async updateCardBase(id: number, name: string): Promise<CardBase> {
-    const [base] = await db.update(cardBases).set({ name }).where(eq(cardBases.id, id)).returning();
+  async updateCardBase(id: number, data: Partial<Pick<CardBase, "name" | "isRefundable" | "validRate">>): Promise<CardBase | undefined> {
+    const [base] = await db.update(cardBases).set(data).where(eq(cardBases.id, id)).returning();
     return base;
   }
 

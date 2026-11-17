@@ -1,9 +1,18 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Search, ShoppingCart, ChevronDown, X, Loader2, SlidersHorizontal } from "lucide-react";
+import { Search, ShoppingCart, ChevronDown, Loader2, SlidersHorizontal } from "lucide-react";
 import { useLocation, Redirect } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import CardsFilterSheet, { type CardsFilterValues } from "@/components/CardsFilterSheet";
+import {
+  CARD_ATTRIBUTE_KEYS,
+  EMPTY_CARD_ATTRIBUTE_FILTERS,
+  cardHasAttribute,
+  extractCardState,
+  type CardAttributeFilters,
+  type CardAttributeKey,
+} from "@/lib/card-filters";
 
 function countryFlag(code: string): string {
   if (!code || code.length !== 2) return "";
@@ -95,14 +104,21 @@ function formatBank(binData: any): string {
 
 export default function CardsPage() {
   const [search, setSearch] = useState("");
-  const [zipSearch, setZipSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<CardsFilterValues>({
+    country: "",
+    state: "",
+    zip: "",
+    bin: "",
+    brand: "",
+    bank: "",
+    refundable: "all",
+    priceMin: "",
+    priceMax: "",
+  });
+  const [attributeFilters, setAttributeFilters] = useState<CardAttributeFilters>(EMPTY_CARD_ATTRIBUTE_FILTERS);
   const [selectedBase, setSelectedBase] = useState<number | null>(null);
   const [showBaseDropdown, setShowBaseDropdown] = useState(false);
-  const [selectedBank, setSelectedBank] = useState("");
-  const [selectedCountry, setSelectedCountry] = useState("");
-  const [priceMin, setPriceMin] = useState("");
-  const [priceMax, setPriceMax] = useState("");
   const [cartCardIds, setCartCardIds] = useState<Set<number>>(new Set());
   const [cartPurchasing, setCartPurchasing] = useState<{ current: number; total: number; done: boolean } | null>(null);
 
@@ -141,9 +157,39 @@ export default function CardsPage() {
   const availableCountries = useMemo(() => {
     if (!cards) return [];
     const set = new Set<string>();
-    cards.forEach((c: any) => { const code = c.binData?.countryCode; if (code) set.add(code.toUpperCase()); });
+    cards.forEach((c: any) => {
+      const code = c.binData?.countryCode ?? (c.country?.length === 2 ? c.country : "");
+      if (code) set.add(code.toUpperCase());
+    });
     return Array.from(set).sort();
   }, [cards]);
+
+  const availableStates = useMemo(
+    () => Array.from(new Set((cards ?? []).map((card: any) => extractCardState(card.extras ?? "")).filter(Boolean))).sort(),
+    [cards],
+  );
+
+  const availableBrands = useMemo(() => {
+    const brands = new Set<string>();
+    (cards ?? []).forEach((card: any) => {
+      const brand = card.binData?.brand || card.binData?.scheme;
+      if (brand && brand !== "Unknown") brands.add(String(brand).trim());
+    });
+    return Array.from(brands).sort((a, b) => a.localeCompare(b));
+  }, [cards]);
+
+  const updateFilter = useCallback((key: keyof CardsFilterValues, value: string) => {
+    setFilters(current => ({ ...current, [key]: value } as CardsFilterValues));
+  }, []);
+
+  const updateAttributeFilter = useCallback((
+    key: CardAttributeKey,
+    value: CardAttributeFilters[CardAttributeKey],
+  ) => {
+    setAttributeFilters(current => ({ ...current, [key]: value }));
+  }, []);
+
+  const closeFilters = useCallback(() => setShowFilters(false), []);
 
   const filteredCards = useMemo(() => {
     if (!cards) return [];
@@ -155,15 +201,34 @@ export default function CardsPage() {
         || (card.binData?.scheme ?? "").toLowerCase().includes(q)
         || (card.binData?.type ?? "").toLowerCase().includes(q)
         || (card.binData?.brand ?? "").toLowerCase().includes(q);
-      const matchZip = !zipSearch || extractZip(card.extras ?? "").startsWith(zipSearch.trim());
+      const matchZip = !filters.zip || extractZip(card.extras ?? "").startsWith(filters.zip.trim());
+      const binTerms = filters.bin.split(",").map((term) => term.replace(/\D/g, "")).filter(Boolean);
+      const cardBin = extractBin(card.cardNumber);
+      const matchBin = binTerms.length === 0 || binTerms.some((term) => cardBin.startsWith(term));
       const cardPrice = card.price / 100;
-      const matchMin = !priceMin || cardPrice >= parseFloat(priceMin);
-      const matchMax = !priceMax || cardPrice <= parseFloat(priceMax);
-      const matchBank = !selectedBank || (card.binData?.bank === selectedBank);
-      const matchCountry = !selectedCountry || ((card.binData?.countryCode ?? "").toUpperCase() === selectedCountry);
-      return matchSearch && matchZip && matchMin && matchMax && matchBank && matchCountry;
+      const matchMin = !filters.priceMin || cardPrice >= parseFloat(filters.priceMin);
+      const matchMax = !filters.priceMax || cardPrice <= parseFloat(filters.priceMax);
+      const matchBank = !filters.bank || (card.binData?.bank === filters.bank);
+      const matchCountry = !filters.country || (
+        (card.binData?.countryCode ?? card.country ?? "").toUpperCase() === filters.country
+      );
+      const matchState = !filters.state || extractCardState(card.extras ?? "") === filters.state;
+      const cardBrand = String(card.binData?.brand || card.binData?.scheme || "");
+      const matchBrand = !filters.brand || cardBrand === filters.brand;
+      const matchRefundable = filters.refundable === "all"
+        || (filters.refundable === "yes" && card.isRefundable === true)
+        || (filters.refundable === "no" && card.isRefundable === false)
+        || (filters.refundable === "unknown" && card.isRefundable == null);
+      const matchAttributes = CARD_ATTRIBUTE_KEYS.every((key) => {
+        const setting = attributeFilters[key];
+        if (setting === "all") return true;
+        const present = cardHasAttribute(card.extras ?? "", key);
+        return setting === "present" ? present : !present;
+      });
+      return matchSearch && matchZip && matchBin && matchMin && matchMax
+        && matchBank && matchCountry && matchState && matchBrand && matchRefundable && matchAttributes;
     });
-  }, [cards, search, zipSearch, priceMin, priceMax, selectedBank, selectedCountry]);
+  }, [cards, search, filters, attributeFilters]);
 
   const cartCards = useMemo(() => (cards ?? []).filter((c: any) => cartCardIds.has(c.id)), [cards, cartCardIds]);
   const cartTotal = cartCards.reduce((s: number, c: any) => s + c.price, 0);
@@ -207,8 +272,22 @@ export default function CardsPage() {
     }, 800);
   };
 
-  const activeFilters = (zipSearch ? 1 : 0) + (priceMin ? 1 : 0) + (priceMax ? 1 : 0) + (selectedBank ? 1 : 0) + (selectedCountry ? 1 : 0);
-  const clearFilters = () => { setZipSearch(""); setPriceMin(""); setPriceMax(""); setSelectedBank(""); setSelectedCountry(""); };
+  const activeFilters = Object.values(filters).filter((value) => value && value !== "all").length
+    + Object.values(attributeFilters).filter((value) => value !== "all").length;
+  const clearFilters = () => {
+    setFilters({
+      country: "",
+      state: "",
+      zip: "",
+      bin: "",
+      brand: "",
+      bank: "",
+      refundable: "all",
+      priceMin: "",
+      priceMax: "",
+    });
+    setAttributeFilters(EMPTY_CARD_ATTRIBUTE_FILTERS);
+  };
 
   return (
     <div className="max-w-2xl lg:max-w-5xl xl:max-w-6xl mx-auto">
@@ -273,7 +352,7 @@ export default function CardsPage() {
 
           {/* Filters button */}
           <button
-            onClick={() => setShowFilters(f => !f)}
+            onClick={() => setShowFilters(true)}
             className={`flex items-center gap-1.5 px-3 h-8 rounded-lg border text-[11px] font-medium transition-colors ${
               showFilters || activeFilters > 0
                 ? "bg-white/10 border-white/20 text-white"
@@ -285,63 +364,6 @@ export default function CardsPage() {
             Filters{activeFilters > 0 ? ` (${activeFilters})` : ""}
           </button>
         </div>
-
-        {/* Filter panel */}
-        {showFilters && (
-          <div className="space-y-2 bg-[#0d0d0d] border border-white/10 rounded-xl p-2.5">
-            <div>
-              <p className="text-[9px] font-bold uppercase tracking-widest text-white/35 mb-1">ZIP Code</p>
-              <input
-                type="text"
-                placeholder="Enter ZIP..."
-                value={zipSearch}
-                onChange={e => setZipSearch(e.target.value)}
-                className="w-full h-7 bg-[#111] border border-white/10 rounded-lg px-2.5 text-[11px] text-white/90 placeholder:text-white/35 outline-none focus:border-white/15"
-                data-testid="input-zip"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-white/35 mb-1">Bank</p>
-                <select
-                  value={selectedBank}
-                  onChange={e => setSelectedBank(e.target.value)}
-                  className="w-full h-7 bg-[#111] border border-white/10 rounded-lg px-2 text-[11px] text-white/70 outline-none"
-                >
-                  <option value="">All Banks</option>
-                  {availableBanks.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
-              </div>
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-white/35 mb-1">Country</p>
-                <select
-                  value={selectedCountry}
-                  onChange={e => setSelectedCountry(e.target.value)}
-                  className="w-full h-7 bg-[#111] border border-white/10 rounded-lg px-2 text-[11px] text-white/70 outline-none"
-                >
-                  <option value="">All</option>
-                  {availableCountries.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-1.5 items-center">
-              <input type="number" step="0.01" placeholder="Min $" value={priceMin} onChange={e => setPriceMin(e.target.value)}
-                className="flex-1 h-7 bg-[#111] border border-white/10 rounded-lg px-2.5 text-[11px] text-white/90 placeholder:text-white/35 outline-none"
-                data-testid="input-price-min"
-              />
-              <span className="text-white/30 text-[11px] shrink-0">—</span>
-              <input type="number" step="0.01" placeholder="Max $" value={priceMax} onChange={e => setPriceMax(e.target.value)}
-                className="flex-1 h-7 bg-[#111] border border-white/10 rounded-lg px-2.5 text-[11px] text-white/90 placeholder:text-white/35 outline-none"
-                data-testid="input-price-max"
-              />
-            </div>
-            {activeFilters > 0 && (
-              <button onClick={clearFilters} className="flex items-center gap-1 text-[10px] text-red-400/70 hover:text-red-400 transition-colors">
-                <X className="h-3 w-3" /> Clear all filters
-              </button>
-            )}
-          </div>
-        )}
 
         {/* Buy Selected button */}
         <button
@@ -378,7 +400,7 @@ export default function CardsPage() {
         ) : filteredCards.length === 0 ? (
           <div className="py-12 text-center text-xs text-white/35">No cards available</div>
         ) : (
-          <table className="w-full text-xs border-collapse" style={{ minWidth: "520px" }}>
+          <table className="w-full text-xs border-collapse" style={{ minWidth: "760px" }}>
             <thead>
               <tr className="border-b border-white/10">
                 <th className="w-8 px-2.5 py-2 text-left">
@@ -396,6 +418,8 @@ export default function CardsPage() {
                 <th className="px-2.5 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-white/35">BANK</th>
                 <th className="px-2.5 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-white/35">ZIP</th>
                 <th className="px-2.5 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-white/35">Country</th>
+                <th className="px-2.5 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-white/35">Refundable</th>
+                <th className="px-2.5 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-white/35">Valid Rate</th>
                 <th className="px-2.5 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-white/35">$</th>
                 <th className="px-2.5 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-white/35">BUY</th>
               </tr>
@@ -413,6 +437,22 @@ export default function CardsPage() {
           </table>
         )}
       </div>
+      {showFilters && (
+        <CardsFilterSheet
+          filters={filters}
+          attributeFilters={attributeFilters}
+          countries={availableCountries.map((code) => ({ value: code, label: countryName(code) || code }))}
+          states={availableStates}
+          brands={availableBrands}
+          banks={availableBanks}
+          resultCount={filteredCards.length}
+          activeFilterCount={activeFilters}
+          onChangeFilter={updateFilter}
+          onChangeAttribute={updateAttributeFilter}
+          onClear={clearFilters}
+          onClose={closeFilters}
+        />
+      )}
     </div>
   );
 }
@@ -427,6 +467,9 @@ function CardTableRow({ card, inCart, onToggleCart }: { card: any; inCart: boole
   const ccCountry = countryName(card.binData?.countryCode ?? "");
   const cardType = formatType(card.binData);
   const bank = formatBank(card.binData);
+  const validRateLabel = card.validRate == null
+    ? "—"
+    : `${Number(card.validRate).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
 
   const purchaseMutation = useMutation({
     mutationFn: async () => {
@@ -475,6 +518,14 @@ function CardTableRow({ card, inCart, onToggleCart }: { card: any; inCart: boole
       </td>
       <td className="px-2.5 py-2">
         <span className="text-base leading-none">{flag || "—"}</span>
+      </td>
+      <td className="px-2.5 py-2">
+        <span className={`text-[10px] font-medium ${card.isRefundable === true ? "text-emerald-400" : card.isRefundable === false ? "text-white/50" : "text-white/25"}`}>
+          {card.isRefundable === true ? "Yes" : card.isRefundable === false ? "No" : "—"}
+        </span>
+      </td>
+      <td className="px-2.5 py-2 text-right">
+        <span className="text-[11px] font-mono text-white/55">{validRateLabel}</span>
       </td>
       <td className="px-2.5 py-2 text-right">
         <span className="font-bold text-xs text-white">${(card.price / 100).toFixed(2)}</span>
