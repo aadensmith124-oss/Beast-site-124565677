@@ -199,7 +199,7 @@ export default function CardsFilterSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="cards-filter-title"
-        className="absolute inset-0 flex flex-col bg-[#090909] text-white shadow-2xl sm:relative sm:max-h-[calc(100vh-3rem)] sm:w-full sm:max-w-xl sm:rounded-2xl sm:border sm:border-white/15"
+        className="absolute inset-0 flex scale-[0.85] origin-center flex-col bg-[#090909] text-white shadow-2xl sm:relative sm:max-h-[calc(100vh-3rem)] sm:w-full sm:max-w-xl sm:rounded-2xl sm:border sm:border-white/15"
         onClick={(event) => event.stopPropagation()}
         data-testid="cards-filter-sheet"
       >
